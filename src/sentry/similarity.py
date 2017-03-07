@@ -369,7 +369,19 @@ class FeatureSet(object):
         )
 
     def merge(self, destination, sources, allow_unsafe=False):
-        get_scope = lambda group: group.project_id
+        get_key = lambda group: '{}'.format(group.id)
+        get_scope = lambda group: '{}'.format(group.project_id)
+
+        aliases = [self.aliases[label] for label in self.features.keys()]
+
+        add_index = lambda sources: reduce(
+            lambda items, chunk: items.extend(chunk) or items,
+            [
+                [(alias, '{}'.format(source.id)) for alias in aliases]
+                for source in sources
+            ],
+            [],
+        )
 
         scopes = {}
         for source in sources:
@@ -379,25 +391,22 @@ class FeatureSet(object):
         if unsafe_scopes and not allow_unsafe:
             raise ValueError('all groups must belong to same project if unsafe merges are not allowed')
 
-        aliases = [self.aliases[label] for label in self.features.keys()]
-
         results = {}
 
         for scope, sources in scopes.items():
             if scope in unsafe_scopes:
-                raise NotImplementedError
+                items = add_index(sources)
+                exports = self.index.export(scope, items)
+                self.index.delete(scope, items)
+                self.index.import_(
+                    get_scope(destination),
+                    [(alias, get_key(destination), data) for (alias, key), data in zip(items, exports)],
+                )
             else:
                 results[scope] = self.index.merge(
                     scope,
                     '{}'.format(destination.id),
-                    reduce(
-                        lambda items, chunk: items.extend(chunk) or items,
-                        [
-                            [(alias, '{}'.format(source.id)) for alias in aliases]
-                            for source in sources
-                        ],
-                        [],
-                    )
+                    add_index(sources),
                 )
 
         return results
