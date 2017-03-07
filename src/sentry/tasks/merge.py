@@ -92,7 +92,7 @@ def merge_group(from_object_id=None, to_object_id=None, transaction_id=None,
         )
         return
 
-    features.merge(new_group, [group])
+    features.merge(new_group, [group], allow_unsafe=True)
 
     previous_group_id = group.id
 

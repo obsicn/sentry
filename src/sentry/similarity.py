@@ -368,24 +368,39 @@ class FeatureSet(object):
             reverse=True,
         )
 
-    def merge(self, destination, sources):
-        assert len(
-            set([destination.project_id]) |
-            set([source.project_id for source in sources])
-        ) == 1, 'all groups must belong to same project'
+    def merge(self, destination, sources, allow_unsafe=False):
+        get_scope = lambda group: group.project_id
+
+        scopes = {}
+        for source in sources:
+            scopes.setdefault(get_scope(source), set()).add(source)
+
+        unsafe_scopes = set(scopes.keys()) - set([get_scope(destination)])
+        if unsafe_scopes and not allow_unsafe:
+            raise ValueError('all groups must belong to same project if unsafe merges are not allowed')
+
         aliases = [self.aliases[label] for label in self.features.keys()]
-        return self.index.merge(
-            '{}'.format(destination.project_id),
-            '{}'.format(destination.id),
-            reduce(
-                lambda items, chunk: items.extend(chunk) or items,
-                [
-                    [(alias, '{}'.format(source.id)) for alias in aliases]
-                    for source in sources
-                ],
-                [],
-            )
-        )
+
+        results = {}
+
+        for scope, sources in scopes.items():
+            if scope in unsafe_scopes:
+                raise NotImplementedError
+            else:
+                results[scope] = self.index.merge(
+                    scope,
+                    '{}'.format(destination.id),
+                    reduce(
+                        lambda items, chunk: items.extend(chunk) or items,
+                        [
+                            [(alias, '{}'.format(source.id)) for alias in aliases]
+                            for source in sources
+                        ],
+                        [],
+                    )
+                )
+
+        return results
 
     def delete(self, group):
         key = '{}'.format(group.id)
